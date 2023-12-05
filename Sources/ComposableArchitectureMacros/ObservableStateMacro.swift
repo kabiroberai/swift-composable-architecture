@@ -52,7 +52,7 @@ public struct ObservableStateMacro {
   static func registrarVariable(_ observableType: TokenSyntax) -> DeclSyntax {
     return
       """
-      @\(raw: ignoredMacroName) private let \(raw: registrarVariableName) = \(raw: qualifiedRegistrarTypeName)()
+      @\(raw: ignoredMacroName) private var \(raw: registrarVariableName) = \(raw: qualifiedRegistrarTypeName)()
       """
   }
 
@@ -239,7 +239,8 @@ extension ObservableStateMacro: MemberMacro {
     declaration.addIfNeeded(
       """
       \(access)var _$id: \(raw: qualifiedIDName) {
-      self.\(raw: registrarVariableName).id
+        get { self.\(raw: registrarVariableName).id }
+        set { self.\(raw: registrarVariableName).id = newValue }
       }
       """ as DeclSyntax,
       to: &declarations
@@ -461,21 +462,9 @@ public struct ObservationStateTrackedMacro: AccessorMacro {
       """
     let modifyAccessor: AccessorDeclSyntax = """
       _modify {
-        if _$isObservableState(_\(identifier)) {
-          let oldValue = _\(identifier)
-          yield &_\(identifier)
-          guard !_$isIdentityEqual(oldValue, _\(identifier))
-          else { return }
-          let newValue = _\(identifier)
-          _\(identifier) = oldValue
-          withMutation(keyPath: \\.\(identifier)) {
-            _\(identifier) = newValue
-          }
-        } else {
-          _$observationRegistrar.willSet(self, keyPath: \\.\(identifier))
-          defer { _$observationRegistrar.didSet(self, keyPath: \\.\(identifier)) }
-          yield &_\(identifier)
-        }
+        let endMutation = _$observationRegistrar.beginMutation(of: &self, keyPath: \\.\(identifier), storageKeyPath: \\._\(identifier))
+        defer { endMutation(&self) }
+        yield &_\(identifier)
       }
       """
 

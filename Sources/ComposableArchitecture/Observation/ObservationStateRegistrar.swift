@@ -1,10 +1,50 @@
 import Perception
 
 public struct ObservationStateRegistrar: Sendable {
-  public let id = ObservableStateID()
+  public var id = ObservableStateID()
   private let registrar = PerceptionRegistrar()
 
   public init() {}
+
+  public struct MutationHandler<Subject> {
+    fileprivate let handler: (inout Subject) -> Void
+
+    public func end(on value: inout Subject) {
+      handler(&value)
+    }
+  }
+
+  public func beginMutation<Subject: Perceptible, Member>(
+    of subject: inout Subject,
+    keyPath: KeyPath<Subject, Member>,
+    storageKeyPath: WritableKeyPath<Subject, Member>
+  ) -> (inout Subject) -> Void {
+    guard var oldValue = subject[keyPath: storageKeyPath] as? any ObservableState else {
+      willSet(subject, keyPath: keyPath)
+      return { didSet($0, keyPath: keyPath) }
+    }
+
+    let oldID = oldValue._$id
+    // create a new ephemeral ID before mutation. If the returned object
+    // has the same ID, it must be a modified version of the existing object,
+    // which means there was a synchronous mutation that fired observers.
+    oldValue._$id = .init()
+    subject[keyPath: storageKeyPath] = oldValue as! Member
+    return { subject in
+      if var newValue = subject[keyPath: storageKeyPath] as? any ObservableState,
+         _$isIdentityEqual(oldValue, newValue) {
+        newValue._$id = oldID
+        subject[keyPath: storageKeyPath] = newValue as! Member
+        return
+      }
+      let newValue = subject[keyPath: storageKeyPath]
+      oldValue._$id = oldID
+      subject[keyPath: storageKeyPath] = oldValue as! Member
+      withMutation(of: subject, keyPath: keyPath) {
+        subject[keyPath: storageKeyPath] = newValue
+      }
+    }
+  }
 }
 
 extension ObservationStateRegistrar: Equatable, Hashable, Codable {
