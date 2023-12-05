@@ -6,14 +6,6 @@ public struct ObservationStateRegistrar: Sendable {
 
   public init() {}
 
-  public struct MutationHandler<Subject> {
-    fileprivate let handler: (inout Subject) -> Void
-
-    public func end(on value: inout Subject) {
-      handler(&value)
-    }
-  }
-
   public func beginMutation<Subject: Perceptible, Member>(
     of subject: inout Subject,
     keyPath: KeyPath<Subject, Member>,
@@ -28,6 +20,8 @@ public struct ObservationStateRegistrar: Sendable {
     // create a new ephemeral ID before mutation. If the returned object
     // has the same ID, it must be a modified version of the existing object,
     // which means there was a synchronous mutation that fired observers.
+    // If the ID is different, all bets are off since the returned object
+    // could have been modified at some arbitrary point in time.
     oldValue._$id = .init()
     subject[keyPath: storageKeyPath] = oldValue as! Member
     return { subject in
